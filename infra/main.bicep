@@ -30,24 +30,34 @@ param location string
 
 @description('Use this parameter to use an existing AI project resource ID')
 param azureExistingAIProjectResourceId string = ''
+
 @description('The Azure resource group where new resources will be deployed')
 param resourceGroupName string = ''
+
 @description('The Azure AI Foundry Hub resource name. If ommited will be generated')
 param aiProjectName string = ''
+
 @description('The application insights resource name. If ommited will be generated')
 param applicationInsightsName string = ''
+
 @description('The AI Services resource name. If ommited will be generated')
 param aiServicesName string = ''
+
 @description('The Azure Search resource name. If ommited will be generated')
 param searchServiceName string = ''
+
 @description('The Azure Search connection name. If ommited will use a default value')
 param searchConnectionName string = ''
+
 @description('The search index name')
 param aiSearchIndexName string = ''
+
 @description('The Azure Storage Account resource name. If ommited will be generated')
 param storageAccountName string = ''
+
 @description('The log analytics workspace name. If ommited will be generated')
 param logAnalyticsWorkspaceName string = ''
+
 @description('Id of the user or app to assign application roles')
 param principalId string = ''
 
@@ -55,14 +65,19 @@ param principalId string = ''
 @description('Format of the chat model to deploy')
 @allowed(['Microsoft', 'OpenAI'])
 param agentModelFormat string = 'OpenAI'
+
 @description('Name of agent to deploy')
 param agentName string = 'agent-template-assistant'
+
 @description('(Deprecated) ID of agent to deploy')
 param aiAgentID string = ''
+
 @description('ID of the existing agent')
 param azureExistingAgentId string = ''
+
 @description('Name of the chat model to deploy')
 param agentModelName string = 'gpt-5-mini'
+
 @description('Name of the model deployment')
 param agentDeploymentName string = 'gpt-5-mini'
 
@@ -86,8 +101,10 @@ param embedModelFormat string = 'OpenAI'
 
 @description('Name of the embedding model to deploy')
 param embedModelName string = 'text-embedding-3-small'
+
 @description('Name of the embedding model deployment')
 param embeddingDeploymentName string = 'text-embedding-3-small'
+
 @description('Embedding model dimensionality')
 param embeddingDeploymentDimensions string = '100'
 
@@ -105,6 +122,7 @@ param embedDeploymentSku string = 'Standard'
 param embedDeploymentCapacity int = 30
 
 param useApplicationInsights bool = true
+
 @description('Do we want to use the Azure AI Search')
 param useSearchService bool = false
 
@@ -122,14 +140,19 @@ param seed string = newGuid()
 param searchServiceEndpoint string = ''
 param searchConnectionId string = ''
 
-var runnerPrincipalType = templateValidationMode? 'ServicePrincipal' : 'User'
-
+var runnerPrincipalType = templateValidationMode ? 'ServicePrincipal' : 'User'
 var abbrs = loadJsonContent('./abbreviations.json')
 
-var resourceToken = templateValidationMode? toLower(uniqueString(subscription().id, environmentName, location, seed)) :  toLower(uniqueString(subscription().id, environmentName, location))
+// Extract the numeric labInstanceId by removing the known 'aiagent' prefix
+// e.g. environmentName = "aiagent61801129" -> resourceToken = "61801129"
+// Falls back to original random hash behaviour if prefix is not present
+var resourceToken = startsWith(toLower(environmentName), 'aiagent')
+  ? toLower(replace(toLower(environmentName), 'aiagent', ''))
+  : templateValidationMode
+    ? toLower(uniqueString(subscription().id, environmentName, location, seed))
+    : toLower(uniqueString(subscription().id, environmentName, location))
 
 var tags = { 'azd-env-name': environmentName }
-
 var tempAgentID = !empty(aiAgentID) ? aiAgentID : ''
 var agentID = !empty(azureExistingAgentId) ? azureExistingAgentId : tempAgentID
 
@@ -147,7 +170,8 @@ var aiChatModel = [
     }
   }
 ]
-var aiEmbeddingModel = [ 
+
+var aiEmbeddingModel = [
   {
     name: embeddingDeploymentName
     model: {
@@ -164,8 +188,8 @@ var aiEmbeddingModel = [
 
 var aiDeployments = concat(
   aiChatModel,
-  useSearchService ? aiEmbeddingModel : [])
-
+  useSearchService ? aiEmbeddingModel : []
+)
 
 // Organize resources in a resource group
 resource rg 'Microsoft.Resources/resourceGroups@2021-04-01' = {
@@ -183,7 +207,6 @@ var logAnalyticsWorkspaceResolvedName = !useApplicationInsights
 var resolvedSearchServiceName = !useSearchService
   ? ''
   : !empty(searchServiceName) ? searchServiceName : '${abbrs.searchSearchServices}${resourceToken}'
-  
 
 module ai 'core/host/ai-environment.bicep' = if (empty(azureExistingAIProjectResourceId)) {
   name: 'ai'
@@ -216,7 +239,6 @@ var searchConnectionIdFromAIOutput = !useSearchService
   : empty(azureExistingAIProjectResourceId) ? ai!.outputs.searchConnectionId : ''
 
 var searchServiceEndpoint_final = empty(searchServiceEndpoint) ? searchServiceEndpointFromAIOutput : searchServiceEndpoint
-
 var searchConnectionId_final = empty(searchConnectionId) ? searchConnectionIdFromAIOutput : searchConnectionId
 
 // If bringing an existing AI project, set up the log analytics workspace here
@@ -229,7 +251,10 @@ module logAnalytics 'core/monitor/loganalytics.bicep' = if (!empty(azureExisting
     name: logAnalyticsWorkspaceResolvedName
   }
 }
-var existingProjEndpoint = !empty(azureExistingAIProjectResourceId) ? format('https://{0}.services.ai.azure.com/api/projects/{1}',split(azureExistingAIProjectResourceId, '/')[8], split(azureExistingAIProjectResourceId, '/')[10]) : ''
+
+var existingProjEndpoint = !empty(azureExistingAIProjectResourceId)
+  ? format('https://{0}.services.ai.azure.com/api/projects/{1}', split(azureExistingAIProjectResourceId, '/')[8], split(azureExistingAIProjectResourceId, '/')[10])
+  : ''
 
 var projectResourceId = !empty(azureExistingAIProjectResourceId)
   ? azureExistingAIProjectResourceId
@@ -263,7 +288,7 @@ module userRoleAzureAIDeveloperBackendExistingProjectRG 'core/security/role.bice
   params: {
     principalType: 'ServicePrincipal'
     principalId: api.outputs.SERVICE_API_IDENTITY_PRINCIPAL_ID
-    roleDefinitionId: '64702f94-c441-49e6-a78b-ef80e0188fee' 
+    roleDefinitionId: '64702f94-c441-49e6-a78b-ef80e0188fee'
   }
 }
 
@@ -311,8 +336,6 @@ module api 'api.bicep' = {
   }
 }
 
-
-
 module userRoleAzureAIDeveloper 'core/security/role.bicep' = {
   name: 'user-role-azureai-developer'
   scope: rg
@@ -323,7 +346,7 @@ module userRoleAzureAIDeveloper 'core/security/role.bicep' = {
   }
 }
 
-module userCognitiveServicesUser  'core/security/role.bicep' = if (empty(azureExistingAIProjectResourceId)) {
+module userCognitiveServicesUser 'core/security/role.bicep' = if (empty(azureExistingAIProjectResourceId)) {
   name: 'user-role-cognitive-services-user'
   scope: rg
   params: {
@@ -333,7 +356,7 @@ module userCognitiveServicesUser  'core/security/role.bicep' = if (empty(azureEx
   }
 }
 
-module userAzureAIUser  'core/security/role.bicep' = if (empty(azureExistingAIProjectResourceId)) {
+module userAzureAIUser 'core/security/role.bicep' = if (empty(azureExistingAIProjectResourceId)) {
   name: 'user-role-azure-ai-user'
   scope: rg
   params: {
@@ -343,7 +366,7 @@ module userAzureAIUser  'core/security/role.bicep' = if (empty(azureExistingAIPr
   }
 }
 
-module backendAzureAIUser  'core/security/role.bicep' = if (empty(azureExistingAIProjectResourceId)) {
+module backendAzureAIUser 'core/security/role.bicep' = if (empty(azureExistingAIProjectResourceId)) {
   name: 'backend-role-azure-ai-user'
   scope: rg
   params: {
@@ -353,7 +376,7 @@ module backendAzureAIUser  'core/security/role.bicep' = if (empty(azureExistingA
   }
 }
 
-module backendCognitiveServicesUser  'core/security/role.bicep' = if (empty(azureExistingAIProjectResourceId)) {
+module backendCognitiveServicesUser 'core/security/role.bicep' = if (empty(azureExistingAIProjectResourceId)) {
   name: 'backend-role-cognitive-services-user'
   scope: rg
   params: {
@@ -363,7 +386,7 @@ module backendCognitiveServicesUser  'core/security/role.bicep' = if (empty(azur
   }
 }
 
-module backendCognitiveServicesUser2  'core/security/role.bicep' = if (!empty(azureExistingAIProjectResourceId)) {
+module backendCognitiveServicesUser2 'core/security/role.bicep' = if (!empty(azureExistingAIProjectResourceId)) {
   name: 'backend-role-cognitive-services-user2'
   scope: existingProjectRG
   params: {
@@ -372,7 +395,6 @@ module backendCognitiveServicesUser2  'core/security/role.bicep' = if (!empty(az
     roleDefinitionId: 'a97b65f3-24c7-4388-baec-2e87135dc908'
   }
 }
-
 
 module backendRoleSearchIndexDataContributorRG 'core/security/role.bicep' = if (useSearchService) {
   name: 'backend-role-azure-index-data-contributor-rg'
